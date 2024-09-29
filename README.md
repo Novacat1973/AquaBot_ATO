@@ -1,4 +1,4 @@
-# AquaBot_ATO - Automatic Top-Off System for Aquariums
+# AquaBot_ATO - Automatic Top-Off System
 
 ## Project Description
 
@@ -10,11 +10,11 @@ The core of the AquaBot_ATO system is an Arduino Nano, which controls and monito
 
 ### Water Level Sensors
 
-Two stainless steel probes are used as water level sensors, divided into two separate systems:
+Stainless steel probes are used as water level sensors, divided into two separate systems:
 
 1. **Main Control:** The first sensor is directly connected to the Arduino and measures the water level hourly. A 10k resistor ensures that the Arduino reads the sensor value through an analog input. The sensor checks for a stable high or low value over a period of 5 seconds to determine if it is in contact with water.
 
-2. **Emergency Shutdown:** The second sensor is decoupled from the Arduino and serves as a safety mechanism. If the water level falls below a critical point, a MOSFET (IRLZ44N) is activated to turn on the pump and refill the water.
+2. **Emergency Shutdown:** The second sensor is decoupled from the Arduino and serves as a safety mechanism. If the water level reaches above a critical point, a MOSFET (IRLZ44N) shuts down the pump to prevent overflow. 
 
 ## Safety Mechanisms
 
@@ -27,6 +27,12 @@ AquaBot_ATO implements two essential safety mechanisms to prevent aquarium overf
 ## User Interaction and Status Display
 
 The system status is indicated by an RGB LED on the sensor and displayed on a connected OLED display. A simple push button allows users to manually interact with the device and check the system status.
+
+- **Constant Green:** Water is filled up to the desired level.
+- **Blinking Blue:** Pump is running / water is filling up.
+- **Blinking Red:** Error detected in the system.
+- **Constant Yellow:** Refill reservoir is about to be empty (warning).
+- **Blinking Yellow:** Refill reservoir is critically low (immediate attention required).
 
 ## Protection Measures
 
