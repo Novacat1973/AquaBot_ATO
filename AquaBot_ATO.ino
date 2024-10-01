@@ -1,6 +1,10 @@
-// noch wird die pumpe jede check periode angeschmissen, wenn die probe nicht im wasser ist. die pumpe wird dann automatisch gestoppe.
+// noch wird die pumpe jede check periode angeschmissen, wenn die probe nicht im wasser ist. die pumpe wird dann automatisch gestoppt.
 // wenn die pumpe automatisch gestoppt wurde, darf sie erst wieder starten, wenn eine bestätigung durch einen button erfolgte.
 // die pump duration soll im serial monitor ausgegeben werden. 
+
+// Integration der LED über die LightWS2812 Bibliothek
+
+
 
 // Pin assignments
 const int sensorPinInput = A1;  // A1 for water sensor input
