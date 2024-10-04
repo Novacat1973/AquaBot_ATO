@@ -1,4 +1,3 @@
-// Implement a state management for pump states
 // Implement error handlings
 // Reduce Code Duplication
 // Add function documentation to each function header: explaining its purpose, parameters and return values
@@ -22,7 +21,7 @@ const int mosfetPin = 2;        // D2 for MOSFET control
 const int buttonPin = 4;        // D4 for button input
 
 // Time intervals and thresholds (in milliseconds)
-const unsigned long readingInterval = 30000;  // Time interval for checking water level
+const unsigned long readingInterval = 10000;  // Time interval for checking water level
 const int stableReadingThreshold = 350;       // Analog reading threshold indicating water contact
 const unsigned long stableDuration = 2000;    // Duration for stable sensor reading to confirm water level
 const float maxPumpDurationFactor = 1.1;      // Safety factor: max pump duration increase for overflow prevention
@@ -45,29 +44,36 @@ unsigned long lastShortPressTime = 0;    // Time of the last short press
 // Flags
 bool initialRun = true;    // Flag to indicate first run since power-up
 bool alarmRaised = false;  // Flag to indicate if the alarm has been raised due to long pump runtime
-bool isPriming = false;    // Flag to indicate if the pump is in priming mode
-bool isRunning = false;    // Flag to indicatenif the pump is running
 
 // Button state variables
 bool buttonState = HIGH;      // Current button state
 bool lastButtonState = HIGH;  // Previous button state
-enum ButtonPressType {        // Enum to define button press types
+enum class ButtonPressType {  // Enum to define button press types
   NONE,
   SHORT_PRESS,
   DOUBLE_SHORT_PRESS,
   LONG_PRESS,
   PRESS_AND_HOLD
 };
-ButtonPressType buttonPressType = NONE;  // Variable to store detected press type
+ButtonPressType buttonPressType = ButtonPressType::NONE;
 
-enum ButtonState {  // Button states
+// Enumeration to define button states
+enum class ButtonState {
   IDLE,
   DEBOUNCING,
   PRESSED,
   WAIT_DOUBLE_PRESS,
   HOLDING
 };
-ButtonState buttonStateMachine = IDLE;  // Button state machine state
+ButtonState buttonStateMachine = ButtonState::IDLE;
+
+// Enumeration to define pump states
+enum class PumpState {
+  OFF,      // Pump is off
+  RUNNING,  // Pump is running (regular water level monitoring)
+  PRIMING   // Pump is priming (manual activation via press-and-hold)
+};
+PumpState pumpState = PumpState::OFF;  // Initial state of the pump
 
 // Function prototypes
 void checkWaterLevel();
@@ -77,8 +83,7 @@ void monitorPumpDuringFilling();
 void checkButtonPress();
 void handleButtonPress();
 void processButtonPress(ButtonPressType pressType);
-bool isLongPress(unsigned long pressStartTime);
-
+bool isWaterLevelStable(int initialReading);
 
 void setup() {
   // Set pin modes
@@ -91,15 +96,13 @@ void setup() {
   Serial.begin(9600);            // Initialize serial for debugging
 }
 
-
 void loop() {
-
-  // Override all monitoring actions if the button is in PRESS_AND_HOLD mode (priming the pump)
-  if (!isPriming) {
-    if (!isRunning) {
-      // If the pump is not running, check water level at regular intervals
+  // Override all actions if the pump is in PRIMING state
+  if (pumpState != PumpState::PRIMING) {
+    if (!alarmRaised && pumpState == PumpState::OFF) {
+      // If the pump is off, check water level at regular intervals
       checkWaterLevel();
-    } else {
+    } else if (pumpState == PumpState::RUNNING) {
       // If the pump is running, monitor its duration to avoid overflow
       monitorPumpDuringFilling();
     }
@@ -112,8 +115,26 @@ void loop() {
   handleButtonPress();
 }
 
+// Helper function to check if water level is stable over a specified duration
+// Parameters:
+// - initialReading: The initial analog reading of the water sensor
+// Returns: true if the water level remains stable for the stableDuration, false otherwise
+bool isWaterLevelStable(int initialReading) {
+  unsigned long stableStart = millis();
+  // Continuously check sensor values over stableDuration
+  while (millis() - stableStart <= stableDuration) {
+    int sensorValue = analogRead(sensorPinInput);  // Read sensor value
+
+    // Determine if the state has changed from initial reading (indicates instability)
+    if ((sensorValue >= stableReadingThreshold && initialReading < stableReadingThreshold) || (sensorValue < stableReadingThreshold && initialReading >= stableReadingThreshold)) {
+      return false;  // State changed, not stable
+    }
+  }
+  return true;  // State remained stable throughout the duration
+}
 
 // Function to check the water level at set intervals
+// Reads the water sensor value and activates the pump if water level is low
 void checkWaterLevel() {
   unsigned long currentMillis = millis();
 
@@ -121,35 +142,12 @@ void checkWaterLevel() {
   if (currentMillis - previousCheckMillis >= readingInterval) {
     previousCheckMillis = currentMillis;
 
-    // Read sensor value and monitor for stability over stableDuration time
-    unsigned long stableStart = millis();
-    bool stateChanged = false;                     // Flag to track if the state changes during stableDuration
-    bool initialState;                             // Initial state of the sensor reading (high or low)
-    int sensorValue = analogRead(sensorPinInput);  // First reading
+    // Read initial sensor value
+    int sensorValue = analogRead(sensorPinInput);
 
-    // Determine initial state based on the first reading
-    if (sensorValue >= stableReadingThreshold) {
-      initialState = true;  // Water is detected
-    } else if (sensorValue < stableReadingThreshold) {
-      initialState = false;  // No water detected
-    } else {
-      return;  // Exit if the first reading is not clearly high or low (fluctuating)
-    }
-
-    // Continuously check sensor values over stableDuration
-    while (millis() - stableStart <= stableDuration) {
-      sensorValue = analogRead(sensorPinInput);
-
-      // Determine if the state has changed
-      if ((sensorValue >= stableReadingThreshold && initialState == false) || (sensorValue < stableReadingThreshold && initialState == true)) {
-        stateChanged = true;  // State changed, exit early
-        break;
-      }
-    }
-
-    // If no state changes were detected, consider the reading stable
-    if (!stateChanged) {
-      if (initialState) {
+    // Check if water level is stable before making decisions
+    if (isWaterLevelStable(sensorValue)) {
+      if (sensorValue >= stableReadingThreshold) {
         DEBUG_PRINTLN("Water level is stable and high.");
         // Water is detected, no action needed
       } else {
@@ -165,34 +163,44 @@ void checkWaterLevel() {
 // Function to activate the pump
 void activatePump() {
   digitalWrite(mosfetPin, HIGH);  // Activate MOSFET to start pump
-  isRunning = true;
+  pumpStartMillis = millis();     // Record the pump start time
 
-  pumpStartMillis = millis();  // Record the pump start time
-  DEBUG_PRINTLN("Pump activated.");
+  // Set pump state based on the current scenario
+  if (pumpState == PumpState::PRIMING) {
+    DEBUG_PRINTLN("Pump priming mode activated.");
+  } else {
+    DEBUG_PRINTLN("Pump activated.");
+    pumpState = PumpState::RUNNING;  // Set pump state to running
+  }
 }
+
 
 // Function to deactivate the pump
 void deactivatePump() {
-  digitalWrite(mosfetPin, LOW);  // Deactivate MOSFET to stop pump
-  isRunning = false;
+  digitalWrite(mosfetPin, LOW);                             // Deactivate MOSFET to stop pump
+  unsigned long fillDuration = millis() - pumpStartMillis;  // Calculate runtime duration
 
-  unsigned long fillDuration = millis() - pumpStartMillis;  // Berechne die Laufzeit der Pumpe
   DEBUG_PRINT("Pump deactivated. Runtime: ");
-  DEBUG_PRINT(fillDuration / 1000.0);  // Ausgabe der Laufzeit in Millisekunden
+  DEBUG_PRINT(fillDuration / 1000.0);
   DEBUG_PRINTLN(" s");
+
+  // Reset pump state to OFF
+  pumpState = PumpState::OFF;
 }
 
 // Function to monitor the pump's behavior during filling
+// Checks if the pump has been running for too long or if water level is stable to deactivate
 void monitorPumpDuringFilling() {
   unsigned long currentMillis = millis();
   unsigned long maxPumpDuration = previousFillDuration * maxPumpDurationFactor;  // Calculate the max allowed pump duration
 
-  // Always check if the pump has been running for too long (overflow prevention)
+  // Check if the pump has been running for too long (overflow prevention)
   if (!initialRun && currentMillis - pumpStartMillis >= maxPumpDuration) {
     DEBUG_PRINTLN("Pump running too long, deactivating pump for safety.");
     deactivatePump();
-    initialRun = false;  // After the first fill cycle, set initialRun to false
-    return;              // Exit function if pump duration exceeded to prevent overflow
+    alarmRaised = true; // Raise an alarm that must be acknowledged before any other action is taken
+    DEBUG_PRINTLN("ALARM raised. Waiting for acknowledgement.");
+    return;  // Exit function if pump duration exceeded to prevent overflow
   }
 
   // Read initial sensor value
@@ -205,91 +213,74 @@ void monitorPumpDuringFilling() {
   }
 
   // If the initial value is high (indicating water is detected), start stability check
-  unsigned long stableStart = millis();
-  bool stateChanged = false;  // Flag to track if the state changes during stableDuration
-  int sensorValue;
-
-  // Continuously check sensor values over stableDuration
-  while (millis() - stableStart <= stableDuration) {
-    sensorValue = analogRead(sensorPinInput);
-
-    // Determine if the state has changed from water detected (high) to no water (low)
-    if (sensorValue < stableReadingThreshold) {
-      stateChanged = true;  // State changed (from high to low), exit early
-      break;
-    }
-  }
-
-  // If no state changes were detected and water remains detected, stop the pump
-  if (!stateChanged) {
+  if (isWaterLevelStable(initialSensorValue)) {
     DEBUG_PRINTLN("Water detected, deactivating pump.");
     deactivatePump();
+    initialRun = false;
     previousFillDuration = currentMillis - pumpStartMillis;  // Record fill duration
   }
 }
 
-
 // Function to handle button presses
+// Check and process button state transitions, debouncing, and press types
 void checkButtonPress() {
-  // Read the current state of the button (active-low)
-  bool currentButtonState = digitalRead(buttonPin);
+  bool currentButtonState = digitalRead(buttonPin);  // Read the current state of the button (active-low)
 
   switch (buttonStateMachine) {
-    case IDLE:
+    case ButtonState::IDLE:
       if (currentButtonState == LOW) {  // Button pressed
-        buttonStateMachine = DEBOUNCING;
+        buttonStateMachine = ButtonState::DEBOUNCING;
         buttonPressStartTime = millis();  // Record when the button was pressed
       }
       break;
 
-    case DEBOUNCING:
+    case ButtonState::DEBOUNCING:
       if (millis() - buttonPressStartTime > debounceDelay) {  // Debounce delay passed
         if (currentButtonState == LOW) {                      // Button is still pressed
-          buttonStateMachine = PRESSED;
-          DEBUG_PRINTLN("Button pressed, start timing.");
+          buttonStateMachine = ButtonState::PRESSED;
+          DEBUG_PRINTLN("Button pressed, start timing.");  // Print button pressed message
         } else {
-          buttonStateMachine = IDLE;  // False trigger, go back to IDLE
+          buttonStateMachine = ButtonState::IDLE;  // False trigger, go back to IDLE
         }
       }
       break;
 
-    case PRESSED:
+    case ButtonState::PRESSED:
       if (currentButtonState == HIGH) {  // Button released
         unsigned long pressDuration = millis() - buttonPressStartTime;
         if (pressDuration < shortPressDuration) {  // Short press detected
           if (millis() - lastShortPressTime <= doublePressInterval) {
-            buttonPressType = DOUBLE_SHORT_PRESS;  // Double short press detected
-            buttonStateMachine = IDLE;             // Reset state after confirming double press
+            buttonPressType = ButtonPressType::DOUBLE_SHORT_PRESS;  // Double short press detected
+            buttonStateMachine = ButtonState::IDLE;                 // Reset state after confirming double press
           } else {
-            lastShortPressTime = millis();           // Record time of the first short press
-            buttonPressType = NONE;                  // Do not process action yet, wait for second press
-            buttonStateMachine = WAIT_DOUBLE_PRESS;  // Wait for a possible second press
+            lastShortPressTime = millis();                        // Record time of the first short press
+            buttonPressType = ButtonPressType::NONE;              // Do not process action yet, wait for second press
+            buttonStateMachine = ButtonState::WAIT_DOUBLE_PRESS;  // Wait for a possible second press
           }
         } else if (pressDuration >= longPressDuration && pressDuration < pressAndHoldDuration) {  // Long press detected
-          buttonPressType = LONG_PRESS;
-          buttonStateMachine = IDLE;
+          buttonPressType = ButtonPressType::LONG_PRESS;
+          buttonStateMachine = ButtonState::IDLE;
         } else if (pressDuration >= pressAndHoldDuration) {  // Transition to press and hold
-          buttonPressType = PRESS_AND_HOLD;
-          buttonStateMachine = HOLDING;  // Transition to HOLDING state
+          buttonPressType = ButtonPressType::PRESS_AND_HOLD;
+          buttonStateMachine = ButtonState::HOLDING;  // Transition to HOLDING state
         }
       } else if (millis() - buttonPressStartTime >= pressAndHoldDuration) {  // Button held for pressAndHoldDuration
-        buttonPressType = PRESS_AND_HOLD;
-        buttonStateMachine = HOLDING;  // Transition to HOLDING state
+        buttonPressType = ButtonPressType::PRESS_AND_HOLD;
+        buttonStateMachine = ButtonState::HOLDING;  // Transition to HOLDING state
       }
       break;
 
-    case HOLDING:
-      if (currentButtonState == HIGH) {  // Button released
-        buttonStateMachine = IDLE;       // Reset to IDLE on release
-        buttonPressType = NONE;          // Clear press type
-        deactivatePump();                // Turn off pump when button is released
-        isPriming = false;               // Exit priming mode
+    case ButtonState::HOLDING:
+      if (currentButtonState == HIGH) {           // Button released
+        buttonStateMachine = ButtonState::IDLE;   // Reset to IDLE on release
+        buttonPressType = ButtonPressType::NONE;  // Clear press type
+        deactivatePump();                         // Turn off pump when button is released
       } else {
-        buttonPressType = PRESS_AND_HOLD;                              // Keep PRESS_AND_HOLD active
-        if (!isPriming) {                                              // Activate pump only once when entering priming mode
+        buttonPressType = ButtonPressType::PRESS_AND_HOLD;            // Keep PRESS_AND_HOLD active
+        if (pumpState != PumpState::PRIMING) {                        // Enter priming mode only once
           DEBUG_PRINTLN("Press and Hold action: Priming the pump.");  // Print message once
-          activatePump();                                              // Turn on the pump while holding
-          isPriming = true;                                            // Set priming mode flag
+          activatePump();                                             // Turn on the pump while holding
+          pumpState = PumpState::PRIMING;                             // Set pump state to priming
         } else {
           // Pump is already running, print running status
           DEBUG_PRINTLN("Pump is running.");
@@ -297,14 +288,14 @@ void checkButtonPress() {
       }
       break;
 
-    case WAIT_DOUBLE_PRESS:
+    case ButtonState::WAIT_DOUBLE_PRESS:
       if (millis() - lastShortPressTime > doublePressInterval) {
-        buttonPressType = SHORT_PRESS;  // No second press within interval, confirm short press
-        buttonStateMachine = IDLE;      // Return to IDLE state and process short press action
+        buttonPressType = ButtonPressType::SHORT_PRESS;  // No second press within interval, confirm short press
+        buttonStateMachine = ButtonState::IDLE;          // Return to IDLE state and process short press action
       }
-      if (currentButtonState == LOW) {    // Second press detected
-        buttonStateMachine = DEBOUNCING;  // Go to debounce state for second press
-        buttonPressStartTime = millis();  // Start timing the second press
+      if (currentButtonState == LOW) {                 // Second press detected
+        buttonStateMachine = ButtonState::DEBOUNCING;  // Go to debounce state for second press
+        buttonPressStartTime = millis();               // Start timing the second press
       }
       break;
   }
@@ -316,17 +307,17 @@ void checkButtonPress() {
 // Function to handle detected button presses and execute actions based on press type
 void handleButtonPress() {
   switch (buttonPressType) {
-    case SHORT_PRESS:
+    case ButtonPressType::SHORT_PRESS:
       DEBUG_PRINTLN("Short press action.");
       // Execute short press action here
       break;
 
-    case DOUBLE_SHORT_PRESS:
+    case ButtonPressType::DOUBLE_SHORT_PRESS:
       DEBUG_PRINTLN("Double short press action.");
       // Execute double short press action here
       break;
 
-    case LONG_PRESS:
+    case ButtonPressType::LONG_PRESS:
       DEBUG_PRINTLN("Long press action.");
       if (alarmRaised) {
         DEBUG_PRINTLN("Alarm acknowledged and reset.");
@@ -335,17 +326,16 @@ void handleButtonPress() {
       // Execute other long press action here
       break;
 
-    case PRESS_AND_HOLD:
-      //DEBUG_PRINTLN("Press and Hold action: Priming the pump.");
+    case ButtonPressType::PRESS_AND_HOLD:
       // Pump activation logic is handled directly in the HOLDING state of the state machine.
       // No additional logic needed here.
       break;
 
-    case NONE:
+    case ButtonPressType::NONE:
       // No press action
       break;
   }
 
   // Reset press type after handling
-  buttonPressType = NONE;
+  buttonPressType = ButtonPressType::NONE;
 }
