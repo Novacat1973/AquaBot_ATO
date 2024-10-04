@@ -4,7 +4,17 @@
 // Add function documentation to each function header: explaining its purpose, parameters and return values
 // Integration of the RGB sensor LED via LightWS2812 library
 
+// Debug Mode
+// When debugging is disabled, the code that generates debug output is not included in the compiled program.
+#define DEBUG_MODE  // Uncomment this line to enable debug mode
 
+#ifdef DEBUG_MODE
+#define DEBUG_PRINT(x) Serial.print(x)
+#define DEBUG_PRINTLN(x) Serial.println(x)
+#else
+#define DEBUG_PRINT(x)
+#define DEBUG_PRINTLN(x)
+#endif
 
 // Pin assignments
 const int sensorPinInput = A1;  // A1 for water sensor input
@@ -140,14 +150,14 @@ void checkWaterLevel() {
     // If no state changes were detected, consider the reading stable
     if (!stateChanged) {
       if (initialState) {
-        Serial.println("Water level is stable and high.");
+        DEBUG_PRINTLN("Water level is stable and high.");
         // Water is detected, no action needed
       } else {
-        Serial.println("Water level is low, activating pump.");
+        DEBUG_PRINTLN("Water level is low, activating pump.");
         activatePump();  // Water is low, activate the pump
       }
     } else {
-      Serial.println("Unstable readings detected, ignoring this cycle.");
+      DEBUG_PRINTLN("Unstable readings detected, ignoring this cycle.");
     }
   }
 }
@@ -158,7 +168,7 @@ void activatePump() {
   isRunning = true;
 
   pumpStartMillis = millis();  // Record the pump start time
-  Serial.println("Pump activated.");
+  DEBUG_PRINTLN("Pump activated.");
 }
 
 // Function to deactivate the pump
@@ -167,9 +177,9 @@ void deactivatePump() {
   isRunning = false;
 
   unsigned long fillDuration = millis() - pumpStartMillis;  // Berechne die Laufzeit der Pumpe
-  Serial.print("Pump deactivated. Runtime: ");
-  Serial.print(fillDuration / 1000.0);  // Ausgabe der Laufzeit in Millisekunden
-  Serial.println(" s");
+  DEBUG_PRINT("Pump deactivated. Runtime: ");
+  DEBUG_PRINT(fillDuration / 1000.0);  // Ausgabe der Laufzeit in Millisekunden
+  DEBUG_PRINTLN(" s");
 }
 
 // Function to monitor the pump's behavior during filling
@@ -179,7 +189,7 @@ void monitorPumpDuringFilling() {
 
   // Always check if the pump has been running for too long (overflow prevention)
   if (!initialRun && currentMillis - pumpStartMillis >= maxPumpDuration) {
-    Serial.println("Pump running too long, deactivating pump for safety.");
+    DEBUG_PRINTLN("Pump running too long, deactivating pump for safety.");
     deactivatePump();
     initialRun = false;  // After the first fill cycle, set initialRun to false
     return;              // Exit function if pump duration exceeded to prevent overflow
@@ -190,7 +200,7 @@ void monitorPumpDuringFilling() {
 
   // If the initial sensor value is below the threshold (no water detected), skip stability check but continue monitoring
   if (initialSensorValue < stableReadingThreshold) {
-    Serial.println("Water not detected initially. Continuing to monitor pump duration.");
+    DEBUG_PRINTLN("Water not detected initially. Continuing to monitor pump duration.");
     return;  // Exit early as no water is detected
   }
 
@@ -212,7 +222,7 @@ void monitorPumpDuringFilling() {
 
   // If no state changes were detected and water remains detected, stop the pump
   if (!stateChanged) {
-    Serial.println("Water detected, deactivating pump.");
+    DEBUG_PRINTLN("Water detected, deactivating pump.");
     deactivatePump();
     previousFillDuration = currentMillis - pumpStartMillis;  // Record fill duration
   }
@@ -236,7 +246,7 @@ void checkButtonPress() {
       if (millis() - buttonPressStartTime > debounceDelay) {  // Debounce delay passed
         if (currentButtonState == LOW) {                      // Button is still pressed
           buttonStateMachine = PRESSED;
-          Serial.println("Button pressed, start timing.");
+          DEBUG_PRINTLN("Button pressed, start timing.");
         } else {
           buttonStateMachine = IDLE;  // False trigger, go back to IDLE
         }
@@ -277,12 +287,12 @@ void checkButtonPress() {
       } else {
         buttonPressType = PRESS_AND_HOLD;                              // Keep PRESS_AND_HOLD active
         if (!isPriming) {                                              // Activate pump only once when entering priming mode
-          Serial.println("Press and Hold action: Priming the pump.");  // Print message once
+          DEBUG_PRINTLN("Press and Hold action: Priming the pump.");  // Print message once
           activatePump();                                              // Turn on the pump while holding
           isPriming = true;                                            // Set priming mode flag
         } else {
           // Pump is already running, print running status
-          Serial.println("Pump is running.");
+          DEBUG_PRINTLN("Pump is running.");
         }
       }
       break;
@@ -307,26 +317,26 @@ void checkButtonPress() {
 void handleButtonPress() {
   switch (buttonPressType) {
     case SHORT_PRESS:
-      Serial.println("Short press action.");
+      DEBUG_PRINTLN("Short press action.");
       // Execute short press action here
       break;
 
     case DOUBLE_SHORT_PRESS:
-      Serial.println("Double short press action.");
+      DEBUG_PRINTLN("Double short press action.");
       // Execute double short press action here
       break;
 
     case LONG_PRESS:
-      Serial.println("Long press action.");
+      DEBUG_PRINTLN("Long press action.");
       if (alarmRaised) {
-        Serial.println("Alarm acknowledged and reset.");
+        DEBUG_PRINTLN("Alarm acknowledged and reset.");
         alarmRaised = false;  // Reset the alarm when long press is detected
       }
       // Execute other long press action here
       break;
 
     case PRESS_AND_HOLD:
-      //Serial.println("Press and Hold action: Priming the pump.");
+      //DEBUG_PRINTLN("Press and Hold action: Priming the pump.");
       // Pump activation logic is handled directly in the HOLDING state of the state machine.
       // No additional logic needed here.
       break;
