@@ -39,7 +39,7 @@ The system status is indicated by an RGB LED on the sensor and displayed on a co
 The system features an OLED display with a main view and a small menu. 
 
 The main view gives information about the current systems status, how much water evaporates, how many water the reservoir still remains and for how many days the remaining water lasts until it needs to be refilled. 
-![Main view](misc\OLED_Page_Layouts\Main.png)
+![Main view](misc/OLED_Page_Layouts/Main.png)
 
 
 ## Protection Measures
