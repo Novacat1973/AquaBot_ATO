@@ -1,0 +1,55 @@
+[
+  {
+    "id": 9,
+    "op": "setTextSize",
+    "size": "2"
+  },
+  {
+    "id": 10,
+    "op": "setFont",
+    "font": "Org_01"
+  },
+  {
+    "op": "setCursor",
+    "id": 11,
+    "x": "0",
+    "y": "28"
+  },
+  {
+    "op": "printCentered",
+    "id": 12,
+    "text": "Reservoir Full",
+    "width": 126
+  },
+  {
+    "op": "drawLine",
+    "id": 8,
+    "x0": "1",
+    "y0": "33",
+    "x1": "127",
+    "y1": "33",
+    "color": "1"
+  },
+  {
+    "id": 2,
+    "op": "setTextSize",
+    "size": "1"
+  },
+  {
+    "id": 3,
+    "op": "setFont",
+    "font": "Default"
+  },
+  {
+    "op": "setCursor",
+    "id": 7,
+    "x": "0",
+    "y": "40"
+  },
+  {
+    "op": "printCentered",
+    "id": 6,
+    "text": "AWESOME",
+    "width": 42
+  }
+]
