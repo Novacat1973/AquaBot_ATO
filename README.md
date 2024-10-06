@@ -39,17 +39,21 @@ The system status is indicated by an RGB LED on the sensor and displayed on a co
 The system features an OLED display with a main view and a small menu. 
 
 The main view gives information about the current systems status, how much water evaporates, how many water the reservoir still remains and for how many days the remaining water lasts until it needs to be refilled. 
+
 ![Main](misc/OLED_Page_Layouts/Main.png)
 
-To enter the menu, do a Long Press (2+ sec.). There are two menu points you can choose from. Either telling the system that you have refilled your reservoir or setting the net volume of your reservoir (the amount of water which can actually be pumped out). You can choose the menu point by doing a Short Press. A Double Press selects the point. 
+To enter the menu, do a Long Press (2+ sec.). There are two menu points you can choose from. Either telling the system that you have refilled your reservoir or setting the net volume of your reservoir (the amount of water which can actually be pumped out). You can choose the menu point by doing a Short Press. A Double Press selects the point.
+
 ![Menu](misc/OLED_Page_Layouts/Menu.png)
 
-Long Press the point "Reservoir Full", restores the remaining volume of the reservoir to the set volume. After a short selection screen the menu exits automatically. 
+Long Press the point "Reservoir Full", restores the remaining volume of the reservoir to the set volume. After a short selection screen the menu exits automatically.
+
 ![Reservoir-Full](misc/OLED_Page_Layouts/Reservoir-Full.png)
 
 Long Press the point "Set Volume" leads to a settings page where you can select the net volume of the water which can actually be pumped into the aquarium, taking into account that the reservoir can't be filled 100% to the top and that always a small amount of water will remain at the bottom which can't be sucked up by the pump. This net volume needs to be tested individually. The max. net volume available is 50 liters.
 
 You can change 1 by a Short Press and 10 by Double Press. When you have reached your desired net volume, define it via a Long Press and the menu will automatically exit after a short selection screen. 
+
 ![Set-Volume](misc/OLED_Page_Layouts/Set-Volume.png)
 ![Volume-Set](misc/OLED_Page_Layouts/Volume-Set.png)
 
