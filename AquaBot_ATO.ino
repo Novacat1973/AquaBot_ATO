@@ -3,6 +3,19 @@
 // Add function documentation to each function header: explaining its purpose, parameters and return values
 // Integration of the RGB sensor LED via LightWS2812 library
 
+// Include libraries for the OLED display management
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// Include fonts for the OLED display
+#include <Org_01.h>
+#include <TomThumb.h>
+
+// Defining the OLED display size
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
 // Debug Mode
 // When debugging is disabled, the code that generates debug output is not included in the compiled program.
 #define DEBUG_MODE  // Uncomment this line to enable debug mode
@@ -45,6 +58,24 @@ unsigned long lastShortPressTime = 0;    // Time of the last short press
 bool initialRun = true;    // Flag to indicate first run since power-up
 bool alarmRaised = false;  // Flag to indicate if the alarm has been raised due to long pump runtime
 
+// Enumeration to define pump states
+enum class PumpState {
+  OFF,      // Pump is off
+  RUNNING,  // Pump is running (regular water level monitoring)
+  PRIMING   // Pump is priming (manual activation via press-and-hold)
+};
+PumpState pumpState = PumpState::OFF;  // Initial state of the pump
+
+// Enumeration to define button states
+enum class ButtonState {
+  IDLE,
+  DEBOUNCING,
+  PRESSED,
+  WAIT_DOUBLE_PRESS,
+  HOLDING
+};
+ButtonState buttonStateMachine = ButtonState::IDLE;
+
 // Button state variables
 bool buttonState = HIGH;      // Current button state
 bool lastButtonState = HIGH;  // Previous button state
@@ -57,23 +88,15 @@ enum class ButtonPressType {  // Enum to define button press types
 };
 ButtonPressType buttonPressType = ButtonPressType::NONE;
 
-// Enumeration to define button states
-enum class ButtonState {
-  IDLE,
-  DEBOUNCING,
-  PRESSED,
-  WAIT_DOUBLE_PRESS,
-  HOLDING
+// Enumeration to define OLED display states
+enum class DisplayState {
+  MAIN_VIEW,            // Showing the main system information
+  MENU_SELECTION,       // Menu where user selects "Reservoir Full" or "Set Volume"
+  MENU_RESERVOIR_FULL,  // Option to reset reservoir
+  MENU_SET_VOLUME,      // Option to set net reservoir volume
+  SETTING_VOLUME        // Adjusting the net volume of the reservoir
 };
-ButtonState buttonStateMachine = ButtonState::IDLE;
-
-// Enumeration to define pump states
-enum class PumpState {
-  OFF,      // Pump is off
-  RUNNING,  // Pump is running (regular water level monitoring)
-  PRIMING   // Pump is priming (manual activation via press-and-hold)
-};
-PumpState pumpState = PumpState::OFF;  // Initial state of the pump
+DisplayState displayState = DisplayState::MAIN_VIEW;  // Initial display state
 
 // Function prototypes
 void checkWaterLevel();
@@ -91,9 +114,14 @@ void setup() {
   pinMode(mosfetPin, OUTPUT);
   pinMode(buttonPin, INPUT_PULLUP);  // Button with internal pull-up resistor
 
+  // Initialize serial communication (for debugging)
+  Serial.begin(9600);
+
+  // Initialize the OLED display
+  setupOLED();
+
   // Initialize states
   digitalWrite(mosfetPin, LOW);  // Set MOSFET initially off
-  Serial.begin(9600);            // Initialize serial for debugging
 }
 
 void loop() {
@@ -114,6 +142,11 @@ void loop() {
   // Process button press types based on detected press type
   handleButtonPress();
 }
+
+
+/* ---------------------------------------------------------------
+ ------------- Main MONITORING and CONTROL functions -------------
+ ----------------------------------------------------------------*/
 
 // Helper function to check if water level is stable over a specified duration
 // Parameters:
@@ -198,7 +231,7 @@ void monitorPumpDuringFilling() {
   if (!initialRun && currentMillis - pumpStartMillis >= maxPumpDuration) {
     DEBUG_PRINTLN("Pump running too long, deactivating pump for safety.");
     deactivatePump();
-    alarmRaised = true; // Raise an alarm that must be acknowledged before any other action is taken
+    alarmRaised = true;  // Raise an alarm that must be acknowledged before any other action is taken
     DEBUG_PRINTLN("ALARM raised. Waiting for acknowledgement.");
     return;  // Exit function if pump duration exceeded to prevent overflow
   }
@@ -220,6 +253,11 @@ void monitorPumpDuringFilling() {
     previousFillDuration = currentMillis - pumpStartMillis;  // Record fill duration
   }
 }
+
+
+/* ---------------------------------------------------------------
+ --------------------- BUTTON HANDLING ---------------------------
+ ----------------------------------------------------------------*/
 
 // Function to handle button presses
 // Check and process button state transitions, debouncing, and press types
@@ -338,4 +376,77 @@ void handleButtonPress() {
 
   // Reset press type after handling
   buttonPressType = ButtonPressType::NONE;
+}
+
+
+/* ---------------------------------------------------------------
+ ------------------- OLED DISPLAY interaction --------------------
+ ----------------------------------------------------------------*/
+
+// Function to initialize the OLED display
+void setupOLED() {
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {  // Address 0x3C for 128x64
+    DEBUG_PRINTLN(F("SSD1306 allocation failed"));
+    for (;;)
+      ;
+  }
+  display.display();
+  delay(2000);  // Pause for 2 seconds
+  display.clearDisplay();
+}
+
+
+// Function to display the main system information
+void displayMainView() {
+  display.clearDisplay();
+
+  display.setFont(&Org_01);
+  display.setTextSize(2);
+
+  // Show system states
+  display.setCursor(5, 17);
+
+  // Check if an alarm has been raised
+  if (alarmRaised) {
+    display.println("!! ERROR !!");
+  } else {
+    // Show pump state if no alarm is raised
+    switch (pumpState) {
+      case PumpState::RUNNING:
+        display.println("Filling up");
+        break;
+      case PumpState::PRIMING:
+        display.println("Priming");
+        break;
+      case PumpState::OFF:
+        display.println("In level");
+        break;
+    }
+  }
+
+  display.setTextSize(1);
+
+  // Show the evaporation rate in liter / week
+  display.setCursor(5, 34);
+  display.println("Evaporation: 10 L/w");
+
+  // Show how many water remains in the reservoir
+  display.setCursor(5, 45);
+  display.println("Remaining: 10/20 L");
+
+  // Show how many days the reservoir still lasts until a refill is required
+  // LW (Low Warning)
+  // LA (Low Alarm -> no pump start possible)
+  display.setCursor(5, 56);
+  display.println("Empty in: 3 d (LW)");
+
+  // Show bar graph of the reservoir filling level and percentage of filling
+  display.setFont(&TomThumb);
+  display.setCursor(107, 10);
+  display.println("100 %");
+  display.drawRect(107, 13, 16, 47, 1);
+  display.fillRect(109, 35, 12, 23, 1);
+
+  // Update the OLED display
+  display.display();
 }
