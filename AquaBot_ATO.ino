@@ -4,17 +4,22 @@
 // Integration of the RGB sensor LED via LightWS2812 library
 
 // Include libraries for the OLED display management
+#include <SPI.h>
+#include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
 // Include fonts for the OLED display
-#include <Org_01.h>
-#include <TomThumb.h>
+#include <Fonts/Org_01.h>
+#include <Fonts/TomThumb.h>
 
-// Defining the OLED display size
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+
+// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+#define SCREEN_ADDRESS 0x3D ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 // Debug Mode
 // When debugging is disabled, the code that generates debug output is not included in the compiled program.
@@ -31,7 +36,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 // Pin assignments
 const int sensorPinInput = A1;  // A1 for water sensor input
 const int mosfetPin = 2;        // D2 for MOSFET control
-const int buttonPin = 4;        // D4 for button input
+const int buttonPin = 3;        // D3 for button input
 
 // Time intervals and thresholds (in milliseconds)
 const unsigned long readingInterval = 10000;  // Time interval for checking water level
@@ -109,22 +114,45 @@ void processButtonPress(ButtonPressType pressType);
 bool isWaterLevelStable(int initialReading);
 
 void setup() {
+
+// Initialize serial communication (for debugging)
+  Serial.begin(9600);
+
+	// SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
+  delay(100);  // Add this before display.begin()
+  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;); // Don't proceed, loop forever
+  }
+
+  // Show initial display buffer contents on the screen --
+  // the library initializes this with an Adafruit splash screen.
+  display.display();
+  delay(2000); // Pause for 2 seconds
+
+  // Clear the buffer
+  display.clearDisplay();
+
   // Set pin modes
   pinMode(sensorPinInput, INPUT);
   pinMode(mosfetPin, OUTPUT);
   pinMode(buttonPin, INPUT_PULLUP);  // Button with internal pull-up resistor
 
-  // Initialize serial communication (for debugging)
-  Serial.begin(9600);
-
-  // Initialize the OLED display
-  setupOLED();
-
+  
   // Initialize states
   digitalWrite(mosfetPin, LOW);  // Set MOSFET initially off
+
+
+
+
+  // Initialize the OLED display
+  //setupOLED();
 }
 
 void loop() {
+
+  //displayMainView();
+
   // Override all actions if the pump is in PRIMING state
   if (pumpState != PumpState::PRIMING) {
     if (!alarmRaised && pumpState == PumpState::OFF) {
@@ -385,11 +413,11 @@ void handleButtonPress() {
 
 // Function to initialize the OLED display
 void setupOLED() {
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {  // Address 0x3C for 128x64
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {  // Address 0x3D (61) for 128x64
     DEBUG_PRINTLN(F("SSD1306 allocation failed"));
-    for (;;)
-      ;
+	//for(;;); // Don't proceed, loop forever
   }
+
   display.display();
   delay(2000);  // Pause for 2 seconds
   display.clearDisplay();
